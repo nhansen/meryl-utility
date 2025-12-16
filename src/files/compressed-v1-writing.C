@@ -87,8 +87,11 @@ compressedFileWriter::compressedFileWriter(const char *filename, uint32 cLevel, 
       break;
   }
 
-  if (errno)
-    fprintf(stderr, "ERROR:  Failed to open output file '%s': %s\n", _filename, strerror(errno)), exit(1);
+  if (_file == nullptr) {
+    if (_pipe)   fprintf(stderr, "ERROR:  Failed to open output file with command '%s'\n", cmd);
+    else         fprintf(stderr, "ERROR:  Failed to open output file '%s': %s\n", _filename, strerror(errno));
+    exit(1);
+  }
 }
 
 

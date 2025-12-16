@@ -128,16 +128,9 @@ compressedFileReader::reopen(int32 nThreads) {
       break;
   }
 
-  //  Catch errors.
-  //   - popen() does not set errno, so all we can do is fail.
-  //   - otherwise, we can say something intelligent.
-
   if (_file == nullptr) {
-    if (_pipe)
-      fprintf(stderr, "ERROR:  Failed to open file with command '%s'\n", cmd);
-    else
-      fprintf(stderr, "ERROR:  Failed to open input file '%s': %s\n", _filename, strerror(errno));
-
+    if (_pipe)   fprintf(stderr, "ERROR:  Failed to open input file with command '%s'\n", cmd);
+    else         fprintf(stderr, "ERROR:  Failed to open input file '%s': %s\n", _filename, strerror(errno));
     exit(1);
   }
 }
