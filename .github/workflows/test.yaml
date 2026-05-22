@@ -1,0 +1,167 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            g++ \
+            make \
+            pkg-config \
+            curl \
+            libssl-dev \
+            libcurl4-openssl-dev \
+            liblzma-dev \
+            libbz2-dev \
+            zlib1g-dev
+
+      - name: Show toolchain versions
+        run: |
+          g++ --version
+          make --version
+          pkg-config --version
+
+      - name: Build library and tests
+        run: |
+          set -euo pipefail
+          cd src
+          make -j"$(nproc)" BUILDTESTS=1
+
+      - name: Run tests
+        run: |
+          set -uo pipefail
+          cd build/bin
+
+          #  Each entry is "<binary>[ <args>...]".  The binary name is the
+          #  first whitespace-delimited token, everything after is passed
+          #  through to it.  An entry can appear multiple times to invoke
+          #  the same binary with different arguments (see sequenceTest).
+          RUNNABLE=(
+            "arraysTest"
+            "bitsTest -all -threads 8"
+            "commandAvailableTest"
+            "decodeIntegerTest -t"
+            "fasta-fastq"
+            "filesTest"
+            "intervalsTest -boring"
+            "intervalsTest -invert"
+            "loggingTest -o test.log"
+            "regexTest-v1 x hexllo"
+            "sequenceReadTest"
+            "sequenceTest -l"
+            "sequenceTest -e"
+            "stddevTest"
+            "stringsTest -K -t"
+            "testHTSbam"
+            "timeTest"
+            "toHexTest"
+            "typesTest"
+          )
+
+          #  Tests we explicitly skip (with reason), so adding a new test in
+          #  src/tests/ later forces an obvious decision in this workflow.
+          SKIPPED=(
+            "alignTest-ksw2:needs -a/-b or -A/-B arguments"
+            "alignTest-ssw:needs -a/-b arguments"
+            "count-palindromes:needs -k argument"
+            "intervalListTest:full run takes ~1 hour"
+            "memoryMappedFileTest:writes a 4 GB file"
+            "parasailTest:needs sequence and mode arguments"
+            "readLines:needs input file argument"
+          )
+
+          failed=()
+
+          run_test () {
+            local label="$1"; shift
+            echo "=== running $label ==="
+            if "$@"; then
+              echo "--- $label: OK"
+            else
+              local rc=$?
+              echo "--- $label: FAILED with exit $rc"
+              failed+=("$label (exit $rc)")
+            fi
+          }
+
+          for entry in "${RUNNABLE[@]}"; do
+            #  Split the entry into binary + args using word splitting.
+            #  shellcheck disable=SC2206
+            parts=( $entry )
+            bin="${parts[0]}"
+            args=( "${parts[@]:1}" )
+
+            if [ ! -x "./$bin" ]; then
+              echo "FAIL: $bin was not built"
+              failed+=("$entry (not built)")
+              continue
+            fi
+
+            run_test "$entry" "./$bin" "${args[@]}"
+          done
+
+          #  testHTSlib is driven by tests/testHTSlib.sh, which downloads a
+          #  few small files from the samtools/htslib repo and then runs the
+          #  testHTSlib binary.  The script expects to run from src/tests/.
+          if [ -x ./testHTSlib ]; then
+            echo "=== running testHTSlib.sh ==="
+            if ( cd "${GITHUB_WORKSPACE}/src/tests" && bash ./testHTSlib.sh ); then
+              echo "--- testHTSlib.sh: OK"
+            else
+              rc=$?
+              echo "--- testHTSlib.sh: FAILED with exit $rc"
+              failed+=("testHTSlib.sh (exit $rc)")
+            fi
+          else
+            echo "FAIL: testHTSlib was not built"
+            failed+=("testHTSlib (not built)")
+          fi
+
+          echo
+          echo "=== skipped ==="
+          for s in "${SKIPPED[@]}"; do
+            echo "  $s"
+          done
+
+          echo
+          if [ ${#failed[@]} -ne 0 ]; then
+            echo "FAILED TESTS:"
+            for f in "${failed[@]}"; do
+              echo "  $f"
+            done
+            exit 1
+          fi
+
+          echo "All tests passed."
+
+      - name: Upload build artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ github.run_id }}
+          path: build/
+          if-no-files-found: ignore
+          retention-days: 7
