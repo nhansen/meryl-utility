@@ -581,15 +581,14 @@ bufSeqFile::loadBases(char    *seq,
     assert(seqLength <= maxLength);
 
     if ((_buffer->peek() == '>') ||      //  If at the next sequence,
-        (_buffer->peek() == '@'))        //  stop reading and return success.
+        (_buffer->peek() == '@') ||      //  stop reading and return success.
+        (_buffer->peek() == '+'))
       return true;
 
     if (seqLength == maxLength) {        //  But if out of space, note that
       endOfSequence = false;             //  we're in the middle of a sequence,
       return true;                       //  and return success.
     }
-
-    _buffer->next();
   }
 
   return seqLength > 0;                  //  EOF.  Return true if bases exist.
