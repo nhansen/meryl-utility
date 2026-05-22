@@ -218,6 +218,7 @@ SUBMAKEFILES += tests/alignTest-ssw.mk \
                 tests/regexTest-v1.mk \
                 tests/regexTest-v2.mk \
                 tests/sequenceTest.mk \
+                tests/sequenceReadTest.mk \
                 tests/stddevTest.mk \
                 tests/stringsTest.mk \
                 tests/systemTest.mk \
